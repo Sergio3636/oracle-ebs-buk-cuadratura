@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    container_name: oracle_python_app
+    env_file:
+      - .env
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./scripts:/app/scripts
+      - ./reportes:/app/reportes
+    restart: unless-stopped
+    networks:
+      - oracle_net
+
+networks:
+  oracle_net:
+    driver: bridge
