@@ -92,18 +92,16 @@ Los sub-códigos Oracle se agregan a un código canónico y se comparan contra e
 
 ### Generar reporte (sin enviar correo)
 
-```bash
-docker compose run --rm app python scripts/run_cuadratura.py \
-    --periodo 052026 --no-email
+```powershell
+docker compose run --rm app python scripts/run_cuadratura.py --periodo 052026 --no-email
 ```
 
 El Excel se guarda en `./reportes/Cuadratura_052026_YYYYMMDD_HHMMSS.xlsx`.
 
 ### Generar y enviar por correo
 
-```bash
-docker compose run --rm app python scripts/run_cuadratura.py \
-    --periodo 052026 --emails rrhh@empresa.cl,finanzas@empresa.cl
+```powershell
+docker compose run --rm app python scripts/run_cuadratura.py --periodo 052026 --emails rrhh@empresa.cl,finanzas@empresa.cl
 ```
 
 ### Parámetros
