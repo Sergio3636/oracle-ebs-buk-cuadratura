@@ -8,7 +8,8 @@ Genera un reporte Excel con diferencias marcadas en rojo y se ejecuta 100% dentr
 
 ## Qué hace
 
-- Extrae haberes y horas extras del módulo Oracle (`APPS.XXGL_CARGA_REMU_DETALLE`)
+- Extrae haberes y horas extras del módulo Oracle (`APPS.XXGL_CARGA_REMU_DETALLE`) filtrados por período
+- Consulta el juego de valores `XX_FORM_HAB_PAYROLL` (tabla `APPLSYS.FND_FLEX_VALUES`) para obtener el mapeo Oracle cohade ↔ Buk item_code, filtrado a los haberes presentes en el período
 - Descarga liquidaciones del período desde la API REST de Buk (`payroll_detail/month?date=DD-MM-YYYY`)
 - Cruza ambos sistemas por **RUT + código de haber**
 - Agrega sub-códigos de horas extras Oracle (HEX051-059, HEX060, HEX062 → HEX051 al 50%, etc.)
@@ -37,7 +38,7 @@ oracle_python_docker/
 │   ├── notifications/
 │   │   └── email.py             # Envío de reporte por SMTP
 │   ├── oracle/
-│   │   └── queries.py           # Queries Oracle + agregación HE + mapa XXMAPEO_HABER
+│   │   └── queries.py           # Queries Oracle + agregación HE + mapa XX_FORM_HAB_PAYROLL
 │   ├── reconciliation/
 │   │   ├── engine.py            # Motor de cuadratura Oracle vs Buk
 │   │   └── models.py            # Dataclasses OracleRecord, BukRecord, ReconciliationRow
@@ -65,16 +66,23 @@ oracle_python_docker/
 ## Mapeo Oracle ↔ Buk
 
 ### Bonos (B%)
-`APPS.XXMAPEO_HABER` contiene la equivalencia:
+
+El mapeo se obtiene en tiempo de ejecución desde el juego de valores Oracle **`XX_FORM_HAB_PAYROLL`** (`APPLSYS.FND_FLEX_VALUES`). Cada entrada del juego tiene:
+
+- `flex_value` con formato `ESN-<cohade>` (ej. `ESN-BONOBR`) — se extrae el código después del `-`
+- `attribute1` con el código Winper de Buk — se prefija con `l` (ej. `l260`)
 
 ```
-Oracle cohade  →  cod_winper  →  Buk item_code
-BONOBR         →  260         →  l260
-BOGEMA         →  160         →  l160
+flex_value       →  cohade    →  Buk item_code
+ESN-BONOBR       →  BONOBR    →  l260
+ESN-BOGEMA       →  BOGEMA    →  l160
 ...
 ```
 
+El mapeo se filtra automáticamente a los haberes que existen en el período consultado: primero se obtienen los `cod_haber` de Oracle para el período y luego se consulta el juego de valores solo para esos códigos.
+
 ### Horas Extras (H%)
+
 Los sub-códigos Oracle se agregan a un código canónico y se comparan contra el `item_code` Buk:
 
 | Oracle (subcódigos sumados) | Buk item_code | Horas en |
@@ -88,11 +96,61 @@ Los sub-códigos Oracle se agregan a un código canónico y se comparan contra e
 
 ---
 
+## Instalación en Linux
+
+### 1. Clonar el repositorio
+
+```bash
+git clone <url-del-repo>
+cd oracle_python_docker
+```
+
+### 2. Crear el directorio de reportes
+
+El directorio `reportes/` está en `.gitignore` y no se incluye en el repositorio. Créalo antes de levantar Docker para evitar que sea creado como `root`:
+
+```bash
+mkdir -p reportes
+```
+
+### 3. Configurar variables de entorno
+
+```bash
+cp .env.example .env
+```
+
+Editar `.env` con los valores reales (ver sección [Variables de entorno](#variables-de-entorno)).
+
+### 4. Oracle Instant Client
+
+**Opción A — Descarga automática durante el build** *(requiere internet)*
+
+El `Dockerfile` descarga el Instant Client 21.13 desde Oracle. No requiere acción adicional.
+
+**Opción B — Copia local** *(sin internet / red corporativa sin acceso a Oracle)*
+
+1. Descargar `instantclient-basiclite-linux.x64-21.13.0.0.0dbru.zip` desde [Oracle](https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html)
+2. Colocar el ZIP en `docker/oracle/`:
+   ```bash
+   mkdir -p docker/oracle
+   cp instantclient-basiclite-linux.x64-21.13.0.0.0dbru.zip docker/oracle/
+   ```
+3. En el `Dockerfile`, comentar la sección **OPCIÓN A** y descomentar la **OPCIÓN B**
+
+### 5. Build y ejecución
+
+```bash
+docker compose build
+docker compose run --rm app python scripts/run_cuadratura.py --periodo 052026 --no-email
+```
+
+---
+
 ## Uso
 
 ### Generar reporte (sin enviar correo)
 
-```powershell
+```bash
 docker compose run --rm app python scripts/run_cuadratura.py --periodo 052026 --no-email
 ```
 
@@ -100,7 +158,7 @@ El Excel se guarda en `./reportes/Cuadratura_052026_YYYYMMDD_HHMMSS.xlsx`.
 
 ### Generar y enviar por correo
 
-```powershell
+```bash
 docker compose run --rm app python scripts/run_cuadratura.py --periodo 052026 --emails rrhh@empresa.cl,finanzas@empresa.cl
 ```
 
@@ -113,51 +171,7 @@ docker compose run --rm app python scripts/run_cuadratura.py --periodo 052026 --
 | `--emails EMAIL,...` | Destinatarios del reporte | — |
 | `--output DIR` | Directorio de salida | `./reportes` |
 
----
-
-## Configuración
-
-### 1. Crear el archivo `.env`
-
-```bash
-cp .env.example .env
-```
-
-```env
-# Oracle EBS
-DB_USER=mi_usuario
-DB_PASSWORD=mi_contraseña
-DB_HOST=192.168.1.100
-DB_PORT=1521
-DB_SERVICE_NAME=ORCL
-
-# Buk HR
-BUK_API_URL=https://linkeschile.buk.cl/api/v1/chile/
-BUK_API_TOKEN=mi_token_buk
-
-# Correo (opcional)
-SMTP_HOST=smtp.empresa.cl
-SMTP_PORT=587
-SMTP_USER=notificaciones@empresa.cl
-SMTP_PASSWORD=contraseña
-EMAIL_FROM=notificaciones@empresa.cl
-```
-
-### 2. Oracle Instant Client
-
-**Opción A — Descarga automática durante el build** *(requiere internet)*
-
-El `Dockerfile` descarga el Instant Client 21.13 desde Oracle. No requiere acción adicional.
-
-**Opción B — Copia local** *(sin internet / CI offline)*
-
-1. Descargar `instantclient-basiclite-linux.x64-21.13.0.0.0dbru.zip` desde [Oracle](https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html)
-2. Colocar el ZIP en `docker/oracle/`
-3. Comentar la Opción A en el `Dockerfile` y descomentar la Opción B
-
----
-
-## Tests
+### Tests
 
 ```bash
 docker compose run --rm app python -m pytest tests/ -v
@@ -167,7 +181,9 @@ docker compose run --rm app python -m pytest tests/ -v
 
 ---
 
-## Variables de entorno
+## Configuración
+
+### Variables de entorno
 
 | Variable | Descripción | Default |
 |---|---|---|
@@ -176,21 +192,27 @@ docker compose run --rm app python -m pytest tests/ -v
 | `DB_HOST` | Host/IP Oracle | — |
 | `DB_PORT` | Puerto Oracle | `1521` |
 | `DB_SERVICE_NAME` | SERVICE_NAME Oracle | — |
-| `ORACLE_CLIENT_LIB_DIR` | Ruta Instant Client en contenedor | `/opt/oracle/instantclient_21_13` |
+| `ORACLE_CLIENT_LIB_DIR` | Ruta Instant Client en el contenedor | `/opt/oracle/instantclient_21_13` |
 | `BUK_API_URL` | Base URL API Buk | — |
 | `BUK_API_TOKEN` | Token de autenticación Buk | — |
 | `SMTP_HOST` | Host SMTP para envío de correo | — |
 | `SMTP_PORT` | Puerto SMTP | `587` |
 | `SMTP_USER` | Usuario SMTP | — |
 | `SMTP_PASSWORD` | Contraseña SMTP | — |
-| `EMAIL_FROM` | Dirección remitente | — |
+| `EMAIL_FROM` / `SMTP_FROM` | Dirección remitente | — |
 
 ---
 
 ## Tablas Oracle utilizadas
 
-| Tabla | Uso |
-|---|---|
-| `APPS.XXGL_CARGA_REMU_DETALLE` | Registros de haberes del módulo custom de remuneraciones |
-| `APPS.XXMAPEO_HABER` | Mapeo `cohade` ↔ `cod_winper` (equivalencia Oracle→Buk) |
-| `APPS.FND_FLEX_VALUES` + `APPS.FND_FLEX_VALUES_TL` | Juego de valores `XX_HABERES_PAYROLL` (ID=1010039) — descripciones oficiales de haberes |
+| Tabla | Schema | Uso |
+|---|---|---|
+| `XXGL_CARGA_REMU_DETALLE` | `APPS` | Registros de haberes del módulo custom de remuneraciones |
+| `XXGL_CARGA_REMU` | `APPS` | Encabezado de carga (período, estado, aprobador) |
+| `XXGL_SITIO` | `APPS` | Nombre del sitio/faena |
+| `XXHR_PERSONAL_JDC` | — | Nombre y cargo del trabajador |
+| `PER_ALL_PEOPLE_F` | `APPS` | Nombre del aprobador |
+| `FND_FLEX_VALUES` | `APPLSYS` | Juego de valores `XX_FORM_HAB_PAYROLL` — mapeo cohade ↔ Buk item_code |
+| `FND_FLEX_VALUES_TL` | `APPLSYS` | Descripción multilenguaje del juego de valores |
+| `FND_FLEX_VALUE_SETS` | `APPLSYS` | Lookup del set por nombre (`XX_FORM_HAB_PAYROLL`) |
+| `FND_FLEX_VALUES` | `APPS` | Juego de valores `XX_HABERES_PAYROLL` (ID=1010039) — descripciones oficiales de haberes |

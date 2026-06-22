@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     oracle_client_lib_dir: str = "/opt/oracle/instantclient_21_13"
 
     # Buk API
-    buk_api_url: str = "https://linkeschile.buk.cl"
+    buk_api_url: str
     buk_api_token: str = ""
 
     # SMTP (email)

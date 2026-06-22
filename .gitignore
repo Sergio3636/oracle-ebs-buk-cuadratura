@@ -9,6 +9,7 @@ build/
 .pytest_cache/
 docker/oracle/*.zip
 docker/oracle/*.rpm
-reportes/
+reportes/*
+!reportes/.gitkeep
 .idea/
 .claude/

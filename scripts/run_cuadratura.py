@@ -94,7 +94,7 @@ def main() -> None:
     try:
         with get_connection() as conn:
             oracle_records    = get_all_haberes(conn, periodo)
-            buk_to_oracle_map = get_buk_to_oracle_map(conn)
+            buk_to_oracle_map = get_buk_to_oracle_map(conn, {r.cod_haber for r in oracle_records})
             oracle_hab_desc   = get_haber_descriptions(conn)
     finally:
         close_pool()

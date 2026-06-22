@@ -2,6 +2,7 @@
 import sys, json
 sys.path.insert(0, "/app")
 
+from src.config.settings import settings
 from src.database.connection import get_connection, init_oracle_client
 from src.utils import normalize_rut
 
@@ -112,11 +113,12 @@ with get_connection() as conn:
 
 print("\n=== BUK: item_codes período actual (3 págs, para comparar) ===\n")
 import urllib.request
-TOKEN = "cM95brFqLnnmhTChCCaiFphA"
+_TOKEN = settings.buk_api_token
+_BASE  = settings.buk_api_url.rstrip("/")
 buk_concepts: dict[str, str] = {}
 for page in range(1, 4):
-    url = f"https://linkeschile.buk.cl/api/v1/chile/payroll_detail/month?month=6&year=2026&page={page}"
-    req = urllib.request.Request(url, headers={"auth_token": TOKEN, "Accept": "application/json"})
+    url = f"{_BASE}/api/v1/chile/payroll_detail/month?month=6&year=2026&page={page}"
+    req = urllib.request.Request(url, headers={"auth_token": _TOKEN, "Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.loads(resp.read())
     for rec in data["data"]:

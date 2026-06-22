@@ -5,11 +5,13 @@ import json
 
 sys.path.insert(0, "/app")
 
+from src.config.settings import settings
 from src.database.connection import get_connection, init_oracle_client
 from src.oracle.queries import get_all_haberes
 from src.utils import normalize_rut
 
-TOKEN = "cM95brFqLnnmhTChCCaiFphA"
+TOKEN  = settings.buk_api_token
+BASE   = settings.buk_api_url.rstrip("/")
 PERIODO = "062026"
 
 # 1. Oracle data
@@ -26,7 +28,7 @@ print(f"Oracle personas con haberes: {len(oracle_by_rut)}")
 # 2. Buk pages 1-3 (sample)
 buk_by_rut: dict[str, dict] = {}
 for page in range(1, 4):
-    url = f"https://linkeschile.buk.cl/api/v1/chile/payroll_detail/month?month=6&year=2026&page={page}"
+    url = f"{BASE}/api/v1/chile/payroll_detail/month?month=6&year=2026&page={page}"
     req = urllib.request.Request(url, headers={"auth_token": TOKEN, "Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.loads(resp.read())

@@ -18,7 +18,7 @@ PERIODO = "052026"
 init_oracle_client()
 with get_connection() as conn:
     oracle_records    = get_all_haberes(conn, PERIODO)
-    buk_to_oracle_map = get_buk_to_oracle_map(conn)
+    buk_to_oracle_map = get_buk_to_oracle_map(conn, {r.cod_haber for r in oracle_records})
     oracle_hab_desc   = get_haber_descriptions(conn)
 close_pool()
 

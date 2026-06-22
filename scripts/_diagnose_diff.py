@@ -13,7 +13,7 @@ PERIODO = "062026"
 init_oracle_client()
 with get_connection() as conn:
     oracle_recs   = get_all_haberes(conn, PERIODO)
-    buk_to_oracle = get_buk_to_oracle_map(conn)
+    buk_to_oracle = get_buk_to_oracle_map(conn, {r.cod_haber for r in oracle_recs})
 
 buk_recs = BukClient(oracle_map=buk_to_oracle).get_payroll_records(PERIODO)
 rows     = reconcile(oracle_recs, buk_recs)

@@ -177,24 +177,39 @@ def get_haber_descriptions(connection: Any) -> dict[str, str]:
     return {str(val): str(desc) for val, desc in cursor.fetchall() if desc}
 
 
-def get_buk_to_oracle_map(connection: Any) -> dict[str, str]:
-    """Builds Buk item_code → Oracle cod_haber map from APPS.XXMAPEO_HABER.
+def get_buk_to_oracle_map(connection: Any, cod_haberes: set[str] | None = None) -> dict[str, str]:
+    """Builds Buk item_code → Oracle cod_haber map from the XX_FORM_HAB_PAYROLL value set.
 
-    Only includes TIPO='H' (haber/income) entries where cod_haber starts with B or H
-    (matching the Oracle SQL filter for bonos and horas extras).
-    Buk item codes follow the pattern 'l' + str(COD_WINPER), e.g. l195, l51.
+    When cod_haberes is provided the query is scoped to those cohade codes only,
+    so the value set lookup is driven by the haberes that actually appear in the period.
+    Call pattern:
+        oracle_records    = get_all_haberes(conn, periodo)
+        buk_to_oracle_map = get_buk_to_oracle_map(conn, {r.cod_haber for r in oracle_records})
     """
-    SQL = """
-    SELECT cohade, cod_winper
-    FROM apps.xxmapeo_haber
-    WHERE tipo = 'H'
-      AND (cohade LIKE 'B%' OR cohade LIKE 'H%')
+    cohade_filter = ""
+    if cod_haberes:
+        literals = ", ".join(f"'{c}'" for c in sorted(cod_haberes))
+        cohade_filter = (
+            f"\n      AND SUBSTR(v.flex_value, INSTR(v.flex_value, '-') + 1,"
+            f" LENGTH(v.flex_value)) IN ({literals})"
+        )
+
+    SQL = f"""
+    SELECT SUBSTR(v.flex_value, INSTR(v.flex_value, '-') + 1, LENGTH(v.flex_value)) cohade,
+           'l' || v.attribute1 c_haber_winper
+    FROM applsys.FND_FLEX_VALUES_TL t,
+         applsys.FND_FLEX_VALUE_SETS s,
+         applsys.FND_FLEX_VALUES v
+    WHERE s.FLEX_VALUE_SET_ID = v.FLEX_VALUE_SET_ID
+      AND t.FLEX_VALUE_ID     = v.FLEX_VALUE_ID
+      AND s.FLEX_VALUE_SET_NAME = 'XX_FORM_HAB_PAYROLL'
+      AND t.language          = 'ESA'
+      AND v.flex_value        LIKE 'ESN%'{cohade_filter}
     """
     cursor = connection.cursor()
     cursor.execute(SQL)
     result: dict[str, str] = {}
-    for cohade, cod_winper in cursor.fetchall():
-        if cod_winper is not None:
-            buk_code = f"l{int(cod_winper)}"
-            result[buk_code] = str(cohade)
+    for cohade, buk_code in cursor.fetchall():
+        if buk_code is not None:
+            result[str(buk_code)] = str(cohade)
     return result
